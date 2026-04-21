@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bloco de Tarefas • Com Flag, Data e Separação</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+    }
+    body {
+      background: #f4f7fc;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .app-container {
+      max-width: 900px;
+      width: 100%;
+      background: white;
+      border-radius: 28px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+      padding: 24px 28px;
+    }
+    h1 {
+      font-weight: 600;
+      font-size: 2rem;
+      color: #1e293b;
+      margin-top: 0;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h1 i {
+      font-size: 1.8rem;
+    }
+    .add-section {
+      background: #f8fafc;
+      padding: 18px 20px;
+      border-radius: 20px;
+      margin-bottom: 28px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      border: 1px solid #e2e8f0;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      flex: 2 1 200px;
+    }
+    .input-group label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #475569;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .input-group input {
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      font-size: 1rem;
+      background: white;
+      transition: 0.2s;
+    }
+    .input-group input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    button {
+      background: #3b82f6;
+      border: none;
+      color: white;
+      font-weight: 500;
+      padding: 10px 20px;
+      border-radius: 40px;
+      font-size: 1rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 8px rgba(59,130,246,0.2);
+    }
+    button:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 14px rgba(59,130,246,0.25);
+    }
+    button.secondary {
+      background: white;
+      color: #1e293b;
+      border: 1px solid #cbd5e1;
+      box-shadow: none;
+    }
+    button.secondary:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    button.small {
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+    .group-header {
+      margin-top: 28px;
+      margin-bottom: 12px;
+      font-weight: 600;
+      font-size: 1.4rem;
+      color: #0f172a;
+      border-bottom: 2px dashed #cbd5e1;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .task-item {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 12px 16px 12px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: 0.1s;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+    }
+    .task-item:hover {
+      background: #fafcff;
+      border-color: #bdd3ff;
+    }
+    .task-check {
+      transform: scale(1.2);
+      accent-color: #3b82f6;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .task-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .task-description {
+      font-weight: 500;
+      color: #0f172a;
+      word-break: break-word;
+    }
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 10px 16px;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .task-group-badge {
+      background: #eef2ff;
+      color: #2563eb;
+      padding: 2px 10px;
+      border-radius: 30px;
+      font-weight: 500;
+      font-size: 0.75rem;
+    }
+    .completion-date {
+      font-family: monospace;
+      background: #f1f5f9;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .task-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .task-actions button {
+      padding: 6px 10px;
+      background: transparent;
+      color: #334155;
+      box-shadow: none;
+      border: 1px solid #e2e8f0;
+      font-size: 0.9rem;
+    }
+    .task-actions button:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      transform: none;
+      box-shadow: none;
+    }
+    .empty-message {
+      color: #64748b;
+      font-style: italic;
+      padding: 12px 0;
+    }
+    .footer-bar {
+      margin-top: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #64748b;
+      font-size: 0.85rem;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 16px;
+    }
+    .reset-btn {
+      background: none;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      box-shadow: none;
+    }
+    .reset-btn:hover {
+      background: #fee2e2;
+    }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <h1>
+    <span>📋 Bloco de Tarefas</span>
+    <span style="font-size: 1rem; font-weight: normal; margin-left: auto;">⚑ flag · 📅 data · 📂 grupos</span>
+  </h1>
+
+  <!-- Form para adicionar nova tarefa -->
+  <div class="add-section">
+    <div class="input-group">
+      <label>📝 Descrição da tarefa</label>
+      <input type="text" id="taskDescInput" placeholder="Ex: Revisar relatório..." autocomplete="off">
+    </div>
+    <div class="input-group">
+      <label>📂 Grupo / Separação</label>
+      <input type="text" id="taskGroupInput" placeholder="Trabalho, Pessoal..." list="groupSuggestions" autocomplete="off">
+      <datalist id="groupSuggestions"></datalist>
+    </div>
+    <button id="addTaskBtn">➕ Adicionar</button>
+  </div>
+
+  <!-- Área onde as tarefas agrupadas serão exibidas -->
+  <div id="groupsContainer"></div>
+
+  <div class="footer-bar">
+    <span>💾 Salvamento automático no navegador</span>
+    <button class="small reset-btn" id="resetAllBtn">🗑️ Limpar todos os dados</button>
+  </div>
+</div>
+
+<script>
+  (function(){
+    "use strict";
+
+    // ---------- DADOS ----------
+    let tasks = [];  // cada task: { id, description, group, done, completedDate }
+
+    // Chave do localStorage
+    const STORAGE_KEY = 'taskBlockApp_v1';
+
+    // ---------- ELEMENTOS DOM ----------
+    const taskDescInput = document.getElementById('taskDescInput');
+    const taskGroupInput = document.getElementById('taskGroupInput');
+    const addBtn = document.getElementById('addTaskBtn');
+    const groupsContainer = document.getElementById('groupsContainer');
+    const groupDatalist = document.getElementById('groupSuggestions');
+    const resetBtn = document.getElementById('resetAllBtn');
+
+    // ---------- INICIALIZAÇÃO ----------
+    function loadData() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          tasks = JSON.parse(stored);
+        } catch(e) {
+          tasks = [];
+        }
+      } else {
+        // Dados de exemplo para primeira visita
+        tasks = [
+          { id: Date.now() - 100000, description: 'Estudar documentação do projeto', group: 'Trabalho', done: false, completedDate: null },
+          { id: Date.now() - 200000, description: 'Comprar mantimentos', group: 'Pessoal', done: true, completedDate: new Date().toLocaleString() },
+          { id: Date.now() - 150000, description: 'Agendar reunião semanal', group: 'Trabalho', done: false, completedDate: null },
+        ];
+      }
+      // garantir que cada tarefa tenha os campos esperados (migração)
+      tasks = tasks.map(t => ({
+        id: t.id || Date.now() + Math.random(),
+        description: t.description || 'Tarefa sem descrição',
+        group: t.group || 'Geral',
+        done: t.done || false,
+        completedDate: t.completedDate || null
+      }));
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    }
+
+    // ---------- ATUALIZAÇÃO DA INTERFACE ----------
+    function updateGroupDatalist() {
+      const groups = [...new Set(tasks.map(t => t.group).filter(g => g && g.trim() !== ''))];
+      groupDatalist.innerHTML = '';
+      groups.sort((a,b) => a.localeCompare(b));
+      groups.forEach(g => {
+        const option = document.createElement('option');
+        option.value = g;
+        groupDatalist.appendChild(option);
+      });
+    }
+
+    function renderTasks() {
+      if (!groupsContainer) return;
+      
+      // Agrupar tarefas por grupo
+      const groupsMap = new Map();
+      tasks.forEach(task => {
+        const group = task.group?.trim() || 'Geral';
+        if (!groupsMap.has(group)) groupsMap.set(group, []);
+        groupsMap.get(group).push(task);
+      });
+
+      // Ordenar grupos alfabeticamente (Geral no final, opcional)
+      const sortedGroups = Array.from(groupsMap.keys()).sort((a,b) => {
+        if (a === 'Geral') return 1;
+        if (b === 'Geral') return -1;
+        return a.localeCompare(b);
+      });
+
+      let html = '';
+      
+      if (tasks.length === 0) {
+        html = `<div class="empty-message" style="text-align:center; padding:30px;">✨ Nenhuma tarefa ainda. Adicione uma acima.</div>`;
+        groupsContainer.innerHTML = html;
+        updateGroupDatalist();
+        return;
+      }
+
+      sortedGroups.forEach(groupName => {
+        const groupTasks = groupsMap.get(groupName);
+        // Ordenar tarefas dentro do grupo: não concluídas primeiro, depois concluídas
+        groupTasks.sort((a,b) => {
+          if (a.done === b.done) return 0;
+          return a.done ? 1 : -1;
+        });
+
+        html += `<div class="group-header">📌 ${escapeHtml(groupName)} <span style="font-size:0.9rem; font-weight:normal;">(${groupTasks.length})</span></div>`;
+        html += `<div class="task-list">`;
+        
+        groupTasks.forEach(task => {
+          const checkedAttr = task.done ? 'checked' : '';
+          const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
+          
+          html += `
+            <div class="task-item" data-task-id="${task.id}">
+              <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
+              <div class="task-content">
+                <span class="task-description">${escapeHtml(task.description)}</span>
+                <div class="task-meta">
+                  <span class="task-group-badge">📂 ${escapeHtml(task.group)}</span>
+                  <span class="completion-date">${completedDateDisplay}</span>
+                </div>
+              </div>
+              <div class="task-actions">
+                <button class="duplicate-btn small" data-id="${task.id}" title="Duplicar tarefa">🔁 Duplicar</button>
+                <button class="delete-btn small" data-id="${task.id}" title="Excluir tarefa">🗑️</button>
+              </div>
+            </div>
+          `;
+        });
+        
+        html += `</div>`; // fecha task-list
+      });
+
+      groupsContainer.innerHTML = html;
+      updateGroupDatalist();
+
+      // Adicionar event listeners para checkboxes e botões
+      document.querySelectorAll('.task-check').forEach(cb => {
+        cb.addEventListener('change', handleCheckboxChange);
+      });
+      document.querySelectorAll('.duplicate-btn').forEach(btn => {
+        btn.addEventListener('click', handleDuplicate);
+      });
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', handleDelete);
+      });
+    }
+
+    // Helper para evitar XSS
+    function escapeHtml(text) {
+      if (!text) return text;
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ---------- HANDLERS ----------
+    function handleCheckboxChange(e) {
+      const checkbox = e.target;
+      const taskId = Number(checkbox.dataset.id);
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      task.done = checkbox.checked;
+      if (task.done) {
+        task.completedDate = new Date().toLocaleString();
+      } else {
+        task.completedDate = null;
+      }
+      saveData();
+      renderTasks(); // re-render para atualizar data exibida
+    }
+
+    function handleDuplicate(e) {
+      const btn = e.currentTarget;
+      const taskId = Number(btn.dataset.id);
+      const original = tasks.find(t => t.id === taskId);
+      if (!original) return;
+
+      const newTask = {
+        ...original,
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        done: false,           // duplicada começa não concluída
+        completedDate: null
+      };
+      tasks.push(newTask);
+      saveData();
+      renderTasks();
+    }
+
+    function handleDelete(e) {
+      const btn = e.currentTarget;
+      const taskId = Number(btn.dataset.id);
+      tasks = tasks.filter(t => t.id !== taskId);
+      saveData();
+      renderTasks();
+    }
+
+    function addNewTask() {
+      const description = taskDescInput.value.trim();
+      if (!description) {
+        alert('Por favor, descreva a tarefa.');
+        return;
+      }
+      let group = taskGroupInput.value.trim();
+      if (group === '') group = 'Geral';
+
+      const newTask = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        description: description,
+        group: group,
+        done: false,
+        completedDate: null
+      };
+      tasks.push(newTask);
+      saveData();
+      
+      // Limpar campos
+      taskDescInput.value = '';
+      taskGroupInput.value = '';
+      taskDescInput.focus();
+      
+      renderTasks();
+    }
+
+    function resetAllData() {
+      if (confirm('Tem certeza que deseja apagar TODAS as tarefas e grupos? Esta ação não pode ser desfeita.')) {
+        tasks = [];
+        saveData();
+        renderTasks();
+      }
+    }
+
+    // ---------- EVENT LISTENERS GLOBAIS ----------
+    addBtn.addEventListener('click', addNewTask);
+    taskDescInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addNewTask();
+      }
+    });
+    taskGroupInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addNewTask();
+      }
+    });
+    resetBtn.addEventListener('click', resetAllData);
+
+    // ---------- BOOTSTRAP ----------
+    loadData();
+    renderTasks();
+
+    // Sincronizar salvamento automático extra (já salvamos nas ações)
+    window.addEventListener('beforeunload', function() {
+      saveData();
+    });
+
+  })();
+</script>
+</body>
+</html>
