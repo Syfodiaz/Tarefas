@@ -17,7 +17,6 @@
     } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
-    // SUAS CONFIGURAÇÕES DO FIREBASE
     const firebaseConfig = {
       apiKey: "AIzaSyAG5eguIlQJjLpxxKqXAza6eTPGhdiXkI4",
       authDomain: "tarefas-bb.firebaseapp.com",
@@ -32,22 +31,20 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Expor objetos e funções necessárias globalmente
-    window.firebaseApp = app;
+    // Expor globalmente
     window.firebaseAuth = auth;
     window.firebaseDb = db;
     window.signInWithEmailAndPassword = signInWithEmailAndPassword;
     window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
     window.signOut = signOut;
     window.onAuthStateChanged = onAuthStateChanged;
-    window.doc = doc;
-    window.setDoc = setDoc;
-    window.onSnapshot = onSnapshot;
+    window.firestoreDoc = doc;
+    window.firestoreSetDoc = setDoc;
+    window.firestoreOnSnapshot = onSnapshot;
   </script>
   
-  <!-- (estilos permanecem exatamente os mesmos, omitidos por brevidade) -->
   <style>
-        * {
+    * {
       box-sizing: border-box;
       font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
       transition: background-color 0.2s, border-color 0.2s;
@@ -488,11 +485,11 @@
     
     function setupFirestoreListener(uid) {
       const db = window.firebaseDb;
-      const docRef = window.doc(db, 'tasks', uid);
+      const docRef = window.firestoreDoc(db, 'tasks', uid);
       
       if (firestoreUnsubscribe) firestoreUnsubscribe();
       
-      firestoreUnsubscribe = window.onSnapshot(docRef, (docSnap) => {
+      firestoreUnsubscribe = window.firestoreOnSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.tasks && Array.isArray(data.tasks)) {
@@ -523,8 +520,8 @@
       if (!currentUser) return;
       try {
         const db = window.firebaseDb;
-        const docRef = window.doc(db, 'tasks', currentUser.uid);
-        await window.setDoc(docRef, { tasks: tasks }, { merge: true });
+        const docRef = window.firestoreDoc(db, 'tasks', currentUser.uid);
+        await window.firestoreSetDoc(docRef, { tasks: tasks }, { merge: true });
         updateSyncStatus(true, 'Salvo na nuvem');
       } catch (error) {
         console.error('Erro ao salvar:', error);
