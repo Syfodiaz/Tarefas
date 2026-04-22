@@ -3,13 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bloco de Tarefas · Flag, Data, Diário & Nuvem</title>
+  <title>Bloco de Tarefas · Login e Nuvem</title>
   
-  <!-- Firebase SDK (versão 12.12.1 compatível com seu snippet) -->
+  <!-- Firebase SDK -->
   <script type="module">
-    // Importações necessárias
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+    import { 
+      getAuth, 
+      signInWithEmailAndPassword, 
+      createUserWithEmailAndPassword, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
     // SUAS CONFIGURAÇÕES DO FIREBASE
@@ -23,12 +28,10 @@
       measurementId: "G-R6V9G1WGB4"
     };
 
-    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Disponibilizar globalmente
     window.firebaseApp = app;
     window.firebaseAuth = auth;
     window.firebaseDb = db;
@@ -45,6 +48,7 @@
       min-height: 100vh;
       display: flex;
       justify-content: center;
+      align-items: center;
       padding: 20px;
       background: #f4f7fc;
       color: #1e293b;
@@ -53,7 +57,7 @@
       background: #0f172a;
       color: #e2e8f0;
     }
-    .app-container {
+    .app-container, .login-container {
       max-width: 1000px;
       width: 100%;
       background: white;
@@ -61,9 +65,13 @@
       box-shadow: 0 12px 30px rgba(0,0,0,0.08);
       padding: 24px 28px;
     }
-    body.dark-mode .app-container {
+    body.dark-mode .app-container, body.dark-mode .login-container {
       background: #1e293b;
       box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+    }
+    .login-container {
+      max-width: 450px;
+      margin: 0 auto;
     }
     h1 {
       font-weight: 600;
@@ -404,147 +412,84 @@
       border-color: #475569;
       color: #f1f5f9;
     }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .login-tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .login-tab {
+      background: none;
+      border: none;
+      color: #64748b;
+      font-weight: 500;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .login-tab.active {
+      color: #3b82f6;
+      border-bottom-color: #3b82f6;
+    }
+    .error-message {
+      color: #dc2626;
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
-<div class="app-container">
-  <h1>
-    <span>📋 Bloco de Tarefas</span>
-    <div class="header-actions">
-      <button id="themeToggle" class="small" title="Alternar tema">🌙 Escuro</button>
-    </div>
-  </h1>
-  <div class="subtitle">⚑ Flag · Diário automático · ☁️ Sincronizado com Firebase</div>
-
-  <div class="view-toggle">
-    <button id="viewGroupsBtn" class="active">📂 Agrupar por Grupo</button>
-    <button id="viewDaysBtn">📅 Agrupar por Dia de Conclusão</button>
-  </div>
-
-  <div class="add-section">
-    <div class="input-group">
-      <label>📝 Descrição</label>
-      <input type="text" id="taskDescInput" placeholder="Ex: Finalizar relatório..." autocomplete="off">
-    </div>
-    <div class="input-group">
-      <label>📂 Grupo (opcional)</label>
-      <input type="text" id="taskGroupInput" placeholder="Trabalho, Pessoal..." list="groupSuggestions" autocomplete="off">
-      <datalist id="groupSuggestions"></datalist>
-    </div>
-    <button id="addTaskBtn">➕ Adicionar</button>
-  </div>
-
-  <div id="groupsContainer"></div>
-
-  <div class="footer-bar">
-    <div class="sync-status">
-      <span id="syncIcon">☁️</span>
-      <span id="syncText">Conectando...</span>
-    </div>
-    <div class="import-export">
-      <button class="small secondary" id="exportBtn">📤 Exportar JSON</button>
-      <button class="small secondary" id="importBtn">📥 Importar JSON</button>
-      <input type="file" id="fileInput" accept=".json,application/json" class="file-input">
-      <button class="small reset-btn" id="resetAllBtn">🗑️ Limpar tudo</button>
-    </div>
-  </div>
-</div>
+<div id="appRoot"></div>
 
 <script>
   (function(){
     "use strict";
 
-    const STORAGE_KEY = 'taskBlockApp_v3';
-    const USE_FIREBASE = true;
-    
+    // ---------- ESTADO GLOBAL ----------
+    let currentUser = null;
     let tasks = [];
     let currentView = 'groups';
     let darkMode = false;
     let firestoreUnsubscribe = null;
-    let currentUser = null;
     let isOnline = navigator.onLine;
     
-    const TASKS_DOC_ID = 'user_tasks';
-
-    const taskDescInput = document.getElementById('taskDescInput');
-    const taskGroupInput = document.getElementById('taskGroupInput');
-    const addBtn = document.getElementById('addTaskBtn');
-    const groupsContainer = document.getElementById('groupsContainer');
-    const groupDatalist = document.getElementById('groupSuggestions');
-    const viewGroupsBtn = document.getElementById('viewGroupsBtn');
-    const viewDaysBtn = document.getElementById('viewDaysBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const importBtn = document.getElementById('importBtn');
-    const fileInput = document.getElementById('fileInput');
-    const resetBtn = document.getElementById('resetAllBtn');
-    const themeToggle = document.getElementById('themeToggle');
-    const syncIcon = document.getElementById('syncIcon');
-    const syncText = document.getElementById('syncText');
-
-    function initTheme() {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'dark') {
-        darkMode = true;
-        document.body.classList.add('dark-mode');
-        themeToggle.innerHTML = '☀️ Claro';
-      } else if (savedTheme === 'light') {
-        darkMode = false;
-        document.body.classList.remove('dark-mode');
-        themeToggle.innerHTML = '🌙 Escuro';
-      } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        darkMode = prefersDark;
-        if (prefersDark) {
-          document.body.classList.add('dark-mode');
-          themeToggle.innerHTML = '☀️ Claro';
-        } else {
-          themeToggle.innerHTML = '🌙 Escuro';
-        }
-      }
-    }
-
-    function toggleTheme() {
-      darkMode = !darkMode;
-      if (darkMode) {
-        document.body.classList.add('dark-mode');
-        themeToggle.innerHTML = '☀️ Claro';
-        localStorage.setItem('theme', 'dark');
-      } else {
-        document.body.classList.remove('dark-mode');
-        themeToggle.innerHTML = '🌙 Escuro';
-        localStorage.setItem('theme', 'light');
-      }
-    }
-
-    async function initFirebase() {
-      if (!USE_FIREBASE) return;
+    const STORAGE_KEY = 'taskBlockApp_v4';
+    
+    // Elementos principais (serão preenchidos após render)
+    let appContainer;
+    
+    // ---------- VERIFICAR AUTENTICAÇÃO ----------
+    function init() {
+      const auth = window.firebaseAuth;
       
-      try {
-        const auth = window.firebaseAuth;
-        const db = window.firebaseDb;
-        
-        await signInAnonymously(auth);
-        
-        onAuthStateChanged(auth, (user) => {
-          currentUser = user;
-          if (user) {
-            updateSyncStatus(true, 'Conectado ☁️');
-            setupFirestoreListener(user.uid);
-          } else {
-            updateSyncStatus(false, 'Offline (login falhou)');
-            loadFromLocalStorage();
+      // Observar mudanças de autenticação
+      onAuthStateChanged(auth, (user) => {
+        currentUser = user;
+        if (user) {
+          // Usuário logado, mostrar app principal
+          setupFirestoreListener(user.uid);
+          renderApp();
+        } else {
+          // Não logado, mostrar tela de login
+          if (firestoreUnsubscribe) {
+            firestoreUnsubscribe();
+            firestoreUnsubscribe = null;
           }
-        });
-      } catch (error) {
-        console.warn('Firebase indisponível, usando localStorage:', error);
-        updateSyncStatus(false, 'Modo offline');
-        loadFromLocalStorage();
-      }
+          renderLogin();
+        }
+      });
     }
-
+    
+    // ---------- CONFIGURAR LISTENER DO FIRESTORE ----------
     function setupFirestoreListener(uid) {
       const db = window.firebaseDb;
       const docRef = doc(db, 'tasks', uid);
+      
+      if (firestoreUnsubscribe) firestoreUnsubscribe();
       
       firestoreUnsubscribe = onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
@@ -562,358 +507,466 @@
           }
         } else {
           tasks = [];
-          saveToFirestore();
         }
-        
-        saveToLocalStorage();
-        renderTasks();
-        updateSyncStatus(true, 'Sincronizado ☁️');
+        saveToLocalStorage(); // cache local
+        if (appContainer) renderTaskList();
+        updateSyncStatus(true, 'Conectado');
       }, (error) => {
-        console.error('Erro no listener Firestore:', error);
+        console.error('Erro no Firestore:', error);
         updateSyncStatus(false, 'Erro na sincronização');
         loadFromLocalStorage();
       });
     }
-
+    
     async function saveToFirestore() {
-      if (!currentUser || !USE_FIREBASE) return;
-      
+      if (!currentUser) return;
       try {
         const db = window.firebaseDb;
         const docRef = doc(db, 'tasks', currentUser.uid);
         await setDoc(docRef, { tasks: tasks }, { merge: true });
-        updateSyncStatus(true, 'Salvo na nuvem ☁️');
+        updateSyncStatus(true, 'Salvo na nuvem');
       } catch (error) {
-        console.error('Erro ao salvar no Firestore:', error);
+        console.error('Erro ao salvar:', error);
         updateSyncStatus(false, 'Erro ao salvar');
-        saveToLocalStorage();
       }
     }
-
-    function updateSyncStatus(online, message) {
-      isOnline = online;
-      syncIcon.textContent = online ? '☁️' : '📶';
-      syncText.textContent = message;
+    
+    function saveData() {
+      saveToLocalStorage();
+      if (currentUser) {
+        saveToFirestore();
+      }
     }
-
+    
     function loadFromLocalStorage() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        try {
-          tasks = JSON.parse(stored);
-        } catch(e) {
-          tasks = [];
-        }
-      } else {
-        tasks = [
-          { id: Date.now() - 300000, description: 'Estudar documentação', group: 'Trabalho', done: false, completedDate: null },
-          { id: Date.now() - 400000, description: 'Comprar mantimentos', group: 'Pessoal', done: true, completedDate: new Date().toLocaleString() },
-          { id: Date.now() - 200000, description: 'Agendar reunião', group: 'Trabalho', done: true, completedDate: new Date(Date.now() - 86400000).toLocaleString() },
-        ];
+        try { tasks = JSON.parse(stored); } catch(e) { tasks = []; }
       }
-      renderTasks();
+      if (appContainer) renderTaskList();
     }
-
+    
     function saveToLocalStorage() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
     }
-
-    function saveData() {
-      saveToLocalStorage();
-      if (USE_FIREBASE && currentUser) {
-        saveToFirestore();
+    
+    function updateSyncStatus(online, message) {
+      const syncIcon = document.getElementById('syncIcon');
+      const syncText = document.getElementById('syncText');
+      if (syncIcon && syncText) {
+        syncIcon.textContent = online ? '☁️' : '📶';
+        syncText.textContent = message;
       }
     }
-
-    function updateGroupDatalist() {
-      const groups = [...new Set(tasks.map(t => t.group).filter(g => g && g.trim() !== ''))];
-      groupDatalist.innerHTML = '';
-      groups.sort((a,b) => a.localeCompare(b));
-      groups.forEach(g => {
-        const option = document.createElement('option');
-        option.value = g;
-        groupDatalist.appendChild(option);
-      });
-    }
-
-    function renderTasks() {
-      if (!groupsContainer) return;
-      if (tasks.length === 0) {
-        groupsContainer.innerHTML = `<div class="empty-message">✨ Nenhuma tarefa. Adicione uma acima.</div>`;
-        updateGroupDatalist();
-        return;
-      }
-
-      let html = '';
-      if (currentView === 'groups') {
-        html = renderByGroups();
-      } else {
-        html = renderByDays();
-      }
-
-      groupsContainer.innerHTML = html;
-      updateGroupDatalist();
-      attachTaskEventListeners();
-    }
-
-    function renderByGroups() {
-      const groupsMap = new Map();
-      tasks.forEach(task => {
-        const group = task.group?.trim() || 'Geral';
-        if (!groupsMap.has(group)) groupsMap.set(group, []);
-        groupsMap.get(group).push(task);
-      });
-
-      const sortedGroups = Array.from(groupsMap.keys()).sort((a,b) => {
-        if (a === 'Geral') return 1;
-        if (b === 'Geral') return -1;
-        return a.localeCompare(b);
-      });
-
-      let html = '';
-      sortedGroups.forEach(groupName => {
-        const groupTasks = groupsMap.get(groupName);
-        groupTasks.sort((a,b) => a.done - b.done);
-
-        html += `<div class="group-header">📌 ${escapeHtml(groupName)} <span style="font-size:0.9rem; font-weight:normal;">(${groupTasks.length})</span></div>`;
-        html += `<div class="task-list">`;
-        groupTasks.forEach(task => html += renderTaskItem(task));
-        html += `</div>`;
-      });
-      return html;
-    }
-
-    function renderByDays() {
-      const pending = tasks.filter(t => !t.done);
-      const doneTasks = tasks.filter(t => t.done && t.completedDate);
-      
-      const daysMap = new Map();
-      doneTasks.forEach(task => {
-        const datePart = task.completedDate.split(',')[0]?.trim() || 'Data desconhecida';
-        if (!daysMap.has(datePart)) daysMap.set(datePart, []);
-        daysMap.get(datePart).push(task);
-      });
-
-      const sortedDays = Array.from(daysMap.keys()).sort((a,b) => {
-        const parseDate = (str) => {
-          const parts = str.split('/');
-          if (parts.length === 3) return new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
-          return new Date(str);
-        };
-        return parseDate(b) - parseDate(a);
-      });
-
-      let html = '';
-      if (pending.length > 0) {
-        html += `<div class="group-header">⏳ Pendentes <span style="font-size:0.9rem; font-weight:normal;">(${pending.length})</span></div>`;
-        html += `<div class="task-list">`;
-        pending.sort((a,b) => a.description.localeCompare(b.description));
-        pending.forEach(task => html += renderTaskItem(task));
-        html += `</div>`;
-      }
-
-      sortedDays.forEach(day => {
-        const dayTasks = daysMap.get(day);
-        dayTasks.sort((a,b) => a.group.localeCompare(b.group) || a.description.localeCompare(b.description));
-        html += `<div class="group-header">📅 ${escapeHtml(day)} <span style="font-size:0.9rem; font-weight:normal;">(${dayTasks.length})</span></div>`;
-        html += `<div class="task-list">`;
-        dayTasks.forEach(task => html += renderTaskItem(task));
-        html += `</div>`;
-      });
-
-      return html || `<div class="empty-message">✨ Nenhuma tarefa registrada.</div>`;
-    }
-
-    function renderTaskItem(task) {
-      const doneClass = task.done ? 'done-task' : '';
-      const checkedAttr = task.done ? 'checked' : '';
-      const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
-      
-      return `
-        <div class="task-item ${doneClass}" data-task-id="${task.id}">
-          <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
-          <div class="task-content">
-            <span class="task-description">${escapeHtml(task.description)}</span>
-            <div class="task-meta">
-              <span class="task-group-badge">📂 ${escapeHtml(task.group)}</span>
-              <span class="completion-date">${completedDateDisplay}</span>
-            </div>
+    
+    // ---------- RENDERIZAÇÃO DA TELA DE LOGIN ----------
+    function renderLogin() {
+      const root = document.getElementById('appRoot');
+      root.innerHTML = `
+        <div class="login-container">
+          <h1>📋 Bloco de Tarefas</h1>
+          <div class="subtitle">Faça login para sincronizar suas tarefas</div>
+          <div class="login-tabs">
+            <button class="login-tab active" data-tab="login">Entrar</button>
+            <button class="login-tab" data-tab="register">Criar conta</button>
           </div>
-          <div class="task-actions">
-            <button class="duplicate-btn small" data-id="${task.id}">🔁 Duplicar</button>
-            <button class="delete-btn small" data-id="${task.id}">🗑️</button>
+          <form id="loginForm">
+            <div class="input-group" style="margin-bottom: 16px;">
+              <label>Email</label>
+              <input type="email" id="loginEmail" required>
+            </div>
+            <div class="input-group" style="margin-bottom: 20px;">
+              <label>Senha</label>
+              <input type="password" id="loginPassword" required minlength="6">
+            </div>
+            <div id="loginError" class="error-message"></div>
+            <button type="submit" id="loginSubmitBtn" style="width: 100%;">Entrar</button>
+          </form>
+          <p style="text-align: center; margin-top: 20px; font-size: 0.9rem;">
+            Ou <a href="#" id="skipLoginBtn" style="color: #3b82f6;">continuar offline</a>
+          </p>
+        </div>
+      `;
+      
+      const tabBtns = root.querySelectorAll('.login-tab');
+      const form = document.getElementById('loginForm');
+      const emailInput = document.getElementById('loginEmail');
+      const passInput = document.getElementById('loginPassword');
+      const submitBtn = document.getElementById('loginSubmitBtn');
+      const errorDiv = document.getElementById('loginError');
+      const skipBtn = document.getElementById('skipLoginBtn');
+      
+      let currentMode = 'login';
+      
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentMode = btn.dataset.tab;
+          submitBtn.textContent = currentMode === 'login' ? 'Entrar' : 'Criar conta';
+        });
+      });
+      
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = emailInput.value.trim();
+        const pass = passInput.value;
+        errorDiv.textContent = '';
+        
+        try {
+          if (currentMode === 'login') {
+            await signInWithEmailAndPassword(window.firebaseAuth, email, pass);
+          } else {
+            await createUserWithEmailAndPassword(window.firebaseAuth, email, pass);
+          }
+        } catch (err) {
+          errorDiv.textContent = err.message;
+        }
+      });
+      
+      skipBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Modo offline: usar localStorage sem autenticação
+        currentUser = null;
+        loadFromLocalStorage();
+        renderApp();
+      });
+    }
+    
+    // ---------- RENDERIZAÇÃO DO APLICATIVO PRINCIPAL ----------
+    function renderApp() {
+      const root = document.getElementById('appRoot');
+      root.innerHTML = `
+        <div class="app-container">
+          <h1>
+            <span>📋 Bloco de Tarefas</span>
+            <div class="header-actions">
+              <div class="user-info">
+                <span>${currentUser ? currentUser.email : 'Modo offline'}</span>
+                ${currentUser ? '<button id="logoutBtn" class="small secondary">Sair</button>' : ''}
+              </div>
+              <button id="themeToggle" class="small" title="Alternar tema">🌙 Escuro</button>
+            </div>
+          </h1>
+          <div class="subtitle">⚑ Flag · Diário automático</div>
+          
+          <div class="view-toggle">
+            <button id="viewGroupsBtn" class="active">📂 Agrupar por Grupo</button>
+            <button id="viewDaysBtn">📅 Agrupar por Dia de Conclusão</button>
+          </div>
+          
+          <div class="add-section">
+            <div class="input-group">
+              <label>📝 Descrição</label>
+              <input type="text" id="taskDescInput" placeholder="Ex: Finalizar relatório..." autocomplete="off">
+            </div>
+            <div class="input-group">
+              <label>📂 Grupo (opcional)</label>
+              <input type="text" id="taskGroupInput" placeholder="Trabalho, Pessoal..." list="groupSuggestions" autocomplete="off">
+              <datalist id="groupSuggestions"></datalist>
+            </div>
+            <button id="addTaskBtn">➕ Adicionar</button>
+          </div>
+          
+          <div id="groupsContainer"></div>
+          
+          <div class="footer-bar">
+            <div class="sync-status">
+              <span id="syncIcon">☁️</span>
+              <span id="syncText">Conectando...</span>
+            </div>
+            <div class="import-export">
+              <button class="small secondary" id="exportBtn">📤 Exportar JSON</button>
+              <button class="small secondary" id="importBtn">📥 Importar JSON</button>
+              <input type="file" id="fileInput" accept=".json,application/json" class="file-input">
+              <button class="small reset-btn" id="resetAllBtn">🗑️ Limpar tudo</button>
+            </div>
           </div>
         </div>
       `;
-    }
-
-    function escapeHtml(text) {
-      if (!text) return text;
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    function attachTaskEventListeners() {
-      document.querySelectorAll('.task-check').forEach(cb => {
-        cb.removeEventListener('change', handleCheckboxChange);
-        cb.addEventListener('change', handleCheckboxChange);
-      });
-      document.querySelectorAll('.duplicate-btn').forEach(btn => {
-        btn.removeEventListener('click', handleDuplicate);
-        btn.addEventListener('click', handleDuplicate);
-      });
-      document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.removeEventListener('click', handleDelete);
-        btn.addEventListener('click', handleDelete);
-      });
-    }
-
-    function handleCheckboxChange(e) {
-      const taskId = Number(e.target.dataset.id);
-      const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
-      task.done = e.target.checked;
-      task.completedDate = task.done ? new Date().toLocaleString() : null;
-      saveData();
-      renderTasks();
-    }
-
-    function handleDuplicate(e) {
-      const taskId = Number(e.currentTarget.dataset.id);
-      const original = tasks.find(t => t.id === taskId);
-      if (!original) return;
-      const newTask = {
-        ...original,
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        done: false,
-        completedDate: null
-      };
-      tasks.push(newTask);
-      saveData();
-      renderTasks();
-    }
-
-    function handleDelete(e) {
-      const taskId = Number(e.currentTarget.dataset.id);
-      tasks = tasks.filter(t => t.id !== taskId);
-      saveData();
-      renderTasks();
-    }
-
-    function addNewTask() {
-      const description = taskDescInput.value.trim();
-      if (!description) {
-        alert('Descreva a tarefa.');
-        return;
-      }
-      let group = taskGroupInput.value.trim() || 'Geral';
       
-      const newTask = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        description,
-        group,
-        done: false,
-        completedDate: null
+      appContainer = root.querySelector('.app-container');
+      
+      // Inicializar tema
+      initTheme();
+      
+      // Referências dos elementos
+      const taskDescInput = document.getElementById('taskDescInput');
+      const taskGroupInput = document.getElementById('taskGroupInput');
+      const addBtn = document.getElementById('addTaskBtn');
+      const groupsContainer = document.getElementById('groupsContainer');
+      const groupDatalist = document.getElementById('groupSuggestions');
+      const viewGroupsBtn = document.getElementById('viewGroupsBtn');
+      const viewDaysBtn = document.getElementById('viewDaysBtn');
+      const exportBtn = document.getElementById('exportBtn');
+      const importBtn = document.getElementById('importBtn');
+      const fileInput = document.getElementById('fileInput');
+      const resetBtn = document.getElementById('resetAllBtn');
+      const themeToggle = document.getElementById('themeToggle');
+      const logoutBtn = document.getElementById('logoutBtn');
+      
+      // Funções internas redefinidas para usar os elementos capturados
+      window.updateGroupDatalist = function() {
+        const groups = [...new Set(tasks.map(t => t.group).filter(g => g && g.trim() !== ''))];
+        groupDatalist.innerHTML = '';
+        groups.sort((a,b) => a.localeCompare(b));
+        groups.forEach(g => {
+          const option = document.createElement('option');
+          option.value = g;
+          groupDatalist.appendChild(option);
+        });
       };
-      tasks.push(newTask);
-      saveData();
-      taskDescInput.value = '';
-      taskGroupInput.value = '';
-      taskDescInput.focus();
-      renderTasks();
-    }
-
-    function exportData() {
-      const dataStr = JSON.stringify(tasks, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tarefas_backup_${new Date().toISOString().slice(0,10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function importData(file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const imported = JSON.parse(e.target.result);
-          if (Array.isArray(imported)) {
-            tasks = imported.map(t => ({
-              id: t.id || Date.now() + Math.random(),
-              description: t.description || 'importada',
-              group: t.group || 'Geral',
-              done: t.done || false,
-              completedDate: t.completedDate || null
-            }));
-            saveData();
-            renderTasks();
-            alert('Importação concluída!');
-          } else {
-            alert('Arquivo inválido.');
-          }
-        } catch (ex) {
-          alert('Erro ao ler JSON.');
+      
+      window.renderTaskList = function() {
+        if (!groupsContainer) return;
+        if (tasks.length === 0) {
+          groupsContainer.innerHTML = `<div class="empty-message">✨ Nenhuma tarefa. Adicione uma acima.</div>`;
+          updateGroupDatalist();
+          return;
         }
+        let html = currentView === 'groups' ? renderByGroups() : renderByDays();
+        groupsContainer.innerHTML = html;
+        updateGroupDatalist();
+        attachTaskEventListeners();
       };
-      reader.readAsText(file);
-    }
-
-    function resetAllData() {
-      if (confirm('Apagar TODAS as tarefas?')) {
-        tasks = [];
+      
+      function renderByGroups() {
+        const groupsMap = new Map();
+        tasks.forEach(task => {
+          const group = task.group?.trim() || 'Geral';
+          if (!groupsMap.has(group)) groupsMap.set(group, []);
+          groupsMap.get(group).push(task);
+        });
+        const sortedGroups = Array.from(groupsMap.keys()).sort((a,b) => a === 'Geral' ? 1 : b === 'Geral' ? -1 : a.localeCompare(b));
+        let html = '';
+        sortedGroups.forEach(groupName => {
+          const groupTasks = groupsMap.get(groupName);
+          groupTasks.sort((a,b) => a.done - b.done);
+          html += `<div class="group-header">📌 ${escapeHtml(groupName)} <span style="font-size:0.9rem; font-weight:normal;">(${groupTasks.length})</span></div>`;
+          html += `<div class="task-list">`;
+          groupTasks.forEach(task => html += renderTaskItem(task));
+          html += `</div>`;
+        });
+        return html;
+      }
+      
+      function renderByDays() {
+        const pending = tasks.filter(t => !t.done);
+        const doneTasks = tasks.filter(t => t.done && t.completedDate);
+        const daysMap = new Map();
+        doneTasks.forEach(task => {
+          const datePart = task.completedDate.split(',')[0]?.trim() || 'Data desconhecida';
+          if (!daysMap.has(datePart)) daysMap.set(datePart, []);
+          daysMap.get(datePart).push(task);
+        });
+        const sortedDays = Array.from(daysMap.keys()).sort((a,b) => {
+          const parseDate = (str) => { const parts = str.split('/'); return parts.length === 3 ? new Date(`${parts[1]}/${parts[0]}/${parts[2]}`) : new Date(str); };
+          return parseDate(b) - parseDate(a);
+        });
+        let html = '';
+        if (pending.length > 0) {
+          html += `<div class="group-header">⏳ Pendentes <span style="font-size:0.9rem; font-weight:normal;">(${pending.length})</span></div>`;
+          html += `<div class="task-list">`;
+          pending.sort((a,b) => a.description.localeCompare(b.description));
+          pending.forEach(task => html += renderTaskItem(task));
+          html += `</div>`;
+        }
+        sortedDays.forEach(day => {
+          const dayTasks = daysMap.get(day);
+          dayTasks.sort((a,b) => a.group.localeCompare(b.group) || a.description.localeCompare(b.description));
+          html += `<div class="group-header">📅 ${escapeHtml(day)} <span style="font-size:0.9rem; font-weight:normal;">(${dayTasks.length})</span></div>`;
+          html += `<div class="task-list">`;
+          dayTasks.forEach(task => html += renderTaskItem(task));
+          html += `</div>`;
+        });
+        return html || `<div class="empty-message">✨ Nenhuma tarefa registrada.</div>`;
+      }
+      
+      function renderTaskItem(task) {
+        const doneClass = task.done ? 'done-task' : '';
+        const checkedAttr = task.done ? 'checked' : '';
+        const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
+        return `
+          <div class="task-item ${doneClass}" data-task-id="${task.id}">
+            <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
+            <div class="task-content">
+              <span class="task-description">${escapeHtml(task.description)}</span>
+              <div class="task-meta">
+                <span class="task-group-badge">📂 ${escapeHtml(task.group)}</span>
+                <span class="completion-date">${completedDateDisplay}</span>
+              </div>
+            </div>
+            <div class="task-actions">
+              <button class="duplicate-btn small" data-id="${task.id}">🔁 Duplicar</button>
+              <button class="delete-btn small" data-id="${task.id}">🗑️</button>
+            </div>
+          </div>
+        `;
+      }
+      
+      function escapeHtml(text) {
+        if (!text) return text;
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      
+      function attachTaskEventListeners() {
+        document.querySelectorAll('.task-check').forEach(cb => {
+          cb.removeEventListener('change', handleCheckboxChange);
+          cb.addEventListener('change', handleCheckboxChange);
+        });
+        document.querySelectorAll('.duplicate-btn').forEach(btn => {
+          btn.removeEventListener('click', handleDuplicate);
+          btn.addEventListener('click', handleDuplicate);
+        });
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+          btn.removeEventListener('click', handleDelete);
+          btn.addEventListener('click', handleDelete);
+        });
+      }
+      
+      function handleCheckboxChange(e) {
+        const taskId = Number(e.target.dataset.id);
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+        task.done = e.target.checked;
+        task.completedDate = task.done ? new Date().toLocaleString() : null;
         saveData();
-        renderTasks();
+        renderTaskList();
+      }
+      
+      function handleDuplicate(e) {
+        const taskId = Number(e.currentTarget.dataset.id);
+        const original = tasks.find(t => t.id === taskId);
+        if (!original) return;
+        const newTask = { ...original, id: Date.now() + Math.floor(Math.random() * 1000), done: false, completedDate: null };
+        tasks.push(newTask);
+        saveData();
+        renderTaskList();
+      }
+      
+      function handleDelete(e) {
+        const taskId = Number(e.currentTarget.dataset.id);
+        tasks = tasks.filter(t => t.id !== taskId);
+        saveData();
+        renderTaskList();
+      }
+      
+      function addNewTask() {
+        const description = taskDescInput.value.trim();
+        if (!description) { alert('Descreva a tarefa.'); return; }
+        let group = taskGroupInput.value.trim() || 'Geral';
+        const newTask = { id: Date.now() + Math.floor(Math.random() * 1000), description, group, done: false, completedDate: null };
+        tasks.push(newTask);
+        saveData();
+        taskDescInput.value = '';
+        taskGroupInput.value = '';
+        taskDescInput.focus();
+        renderTaskList();
+      }
+      
+      function setView(view) {
+        currentView = view;
+        viewGroupsBtn.classList.toggle('active', view === 'groups');
+        viewDaysBtn.classList.toggle('active', view === 'days');
+        renderTaskList();
+      }
+      
+      function exportData() {
+        const dataStr = JSON.stringify(tasks, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tarefas_backup_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      
+      function importData(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const imported = JSON.parse(e.target.result);
+            if (Array.isArray(imported)) {
+              tasks = imported.map(t => ({ id: t.id || Date.now(), description: t.description || '', group: t.group || 'Geral', done: t.done || false, completedDate: t.completedDate || null }));
+              saveData();
+              renderTaskList();
+              alert('Importação concluída!');
+            } else { alert('Arquivo inválido.'); }
+          } catch (ex) { alert('Erro ao ler JSON.'); }
+        };
+        reader.readAsText(file);
+      }
+      
+      function resetAllData() {
+        if (confirm('Apagar TODAS as tarefas?')) {
+          tasks = [];
+          saveData();
+          renderTaskList();
+        }
+      }
+      
+      // Event listeners
+      addBtn.addEventListener('click', addNewTask);
+      taskDescInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
+      taskGroupInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
+      viewGroupsBtn.addEventListener('click', () => setView('groups'));
+      viewDaysBtn.addEventListener('click', () => setView('days'));
+      exportBtn.addEventListener('click', exportData);
+      importBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => { if (fileInput.files.length) { importData(fileInput.files[0]); fileInput.value = ''; } });
+      resetBtn.addEventListener('click', resetAllData);
+      themeToggle.addEventListener('click', toggleTheme);
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+          await signOut(window.firebaseAuth);
+          // onAuthStateChanged vai automaticamente para tela de login
+        });
+      }
+      
+      window.addEventListener('online', () => { updateSyncStatus(true, 'Online'); if (currentUser) saveToFirestore(); });
+      window.addEventListener('offline', () => updateSyncStatus(false, 'Offline'));
+      
+      // Inicializar lista
+      renderTaskList();
+      updateSyncStatus(!!currentUser, currentUser ? 'Conectado' : 'Modo offline');
+    }
+    
+    // Funções de tema
+    function initTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') {
+        darkMode = true;
+        document.body.classList.add('dark-mode');
+        const btn = document.getElementById('themeToggle');
+        if (btn) btn.innerHTML = '☀️ Claro';
+      } else if (saved === 'light') {
+        darkMode = false;
+        document.body.classList.remove('dark-mode');
+      } else {
+        const prefers = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        darkMode = prefers;
+        if (prefers) document.body.classList.add('dark-mode');
       }
     }
-
-    function setView(view) {
-      currentView = view;
-      viewGroupsBtn.classList.toggle('active', view === 'groups');
-      viewDaysBtn.classList.toggle('active', view === 'days');
-      renderTasks();
+    
+    function toggleTheme() {
+      darkMode = !darkMode;
+      if (darkMode) {
+        document.body.classList.add('dark-mode');
+        document.getElementById('themeToggle').innerHTML = '☀️ Claro';
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.body.classList.remove('dark-mode');
+        document.getElementById('themeToggle').innerHTML = '🌙 Escuro';
+        localStorage.setItem('theme', 'light');
+      }
     }
-
-    addBtn.addEventListener('click', addNewTask);
-    taskDescInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
-    taskGroupInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
     
-    viewGroupsBtn.addEventListener('click', () => setView('groups'));
-    viewDaysBtn.addEventListener('click', () => setView('days'));
-    
-    exportBtn.addEventListener('click', exportData);
-    importBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-      if (fileInput.files.length > 0) {
-        importData(fileInput.files[0]);
-        fileInput.value = '';
-      }
-    });
-    
-    resetBtn.addEventListener('click', resetAllData);
-    themeToggle.addEventListener('click', toggleTheme);
-
-    window.addEventListener('online', () => {
-      updateSyncStatus(true, 'Online ☁️');
-      if (USE_FIREBASE && currentUser) {
-        saveToFirestore();
-      }
-    });
-    window.addEventListener('offline', () => {
-      updateSyncStatus(false, 'Offline');
-    });
-
-    initTheme();
-    initFirebase();
-    
-    setTimeout(() => {
-      if (!currentUser && USE_FIREBASE) {
-        updateSyncStatus(false, 'Modo offline (local)');
-        loadFromLocalStorage();
-      }
-    }, 3000);
+    // Iniciar tudo
+    init();
   })();
 </script>
 </body>
