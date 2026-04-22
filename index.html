@@ -455,26 +455,19 @@
     let currentView = 'groups';
     let darkMode = false;
     let firestoreUnsubscribe = null;
-    let isOnline = navigator.onLine;
     
     const STORAGE_KEY = 'taskBlockApp_v4';
-    
-    // Elementos principais (serão preenchidos após render)
-    let appContainer;
     
     // ---------- VERIFICAR AUTENTICAÇÃO ----------
     function init() {
       const auth = window.firebaseAuth;
       
-      // Observar mudanças de autenticação
       onAuthStateChanged(auth, (user) => {
         currentUser = user;
         if (user) {
-          // Usuário logado, mostrar app principal
           setupFirestoreListener(user.uid);
           renderApp();
         } else {
-          // Não logado, mostrar tela de login
           if (firestoreUnsubscribe) {
             firestoreUnsubscribe();
             firestoreUnsubscribe = null;
@@ -484,7 +477,6 @@
       });
     }
     
-    // ---------- CONFIGURAR LISTENER DO FIRESTORE ----------
     function setupFirestoreListener(uid) {
       const db = window.firebaseDb;
       const docRef = doc(db, 'tasks', uid);
@@ -508,8 +500,8 @@
         } else {
           tasks = [];
         }
-        saveToLocalStorage(); // cache local
-        if (appContainer) renderTaskList();
+        saveToLocalStorage();
+        if (typeof renderTaskList === 'function') renderTaskList();
         updateSyncStatus(true, 'Conectado');
       }, (error) => {
         console.error('Erro no Firestore:', error);
@@ -543,7 +535,7 @@
       if (stored) {
         try { tasks = JSON.parse(stored); } catch(e) { tasks = []; }
       }
-      if (appContainer) renderTaskList();
+      if (typeof renderTaskList === 'function') renderTaskList();
     }
     
     function saveToLocalStorage() {
@@ -559,7 +551,7 @@
       }
     }
     
-    // ---------- RENDERIZAÇÃO DA TELA DE LOGIN ----------
+    // ---------- TELA DE LOGIN ----------
     function renderLogin() {
       const root = document.getElementById('appRoot');
       root.innerHTML = `
@@ -626,14 +618,13 @@
       
       skipBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        // Modo offline: usar localStorage sem autenticação
         currentUser = null;
         loadFromLocalStorage();
         renderApp();
       });
     }
     
-    // ---------- RENDERIZAÇÃO DO APLICATIVO PRINCIPAL ----------
+    // ---------- APLICATIVO PRINCIPAL ----------
     function renderApp() {
       const root = document.getElementById('appRoot');
       root.innerHTML = `
@@ -685,12 +676,10 @@
         </div>
       `;
       
-      appContainer = root.querySelector('.app-container');
-      
       // Inicializar tema
       initTheme();
       
-      // Referências dos elementos
+      // Elementos da UI
       const taskDescInput = document.getElementById('taskDescInput');
       const taskGroupInput = document.getElementById('taskGroupInput');
       const addBtn = document.getElementById('addTaskBtn');
@@ -705,8 +694,15 @@
       const themeToggle = document.getElementById('themeToggle');
       const logoutBtn = document.getElementById('logoutBtn');
       
-      // Funções internas redefinidas para usar os elementos capturados
-      window.updateGroupDatalist = function() {
+      // Funções auxiliares
+      function escapeHtml(text) {
+        if (!text) return text;
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      
+      function updateGroupDatalist() {
         const groups = [...new Set(tasks.map(t => t.group).filter(g => g && g.trim() !== ''))];
         groupDatalist.innerHTML = '';
         groups.sort((a,b) => a.localeCompare(b));
@@ -715,20 +711,29 @@
           option.value = g;
           groupDatalist.appendChild(option);
         });
-      };
+      }
       
-      window.renderTaskList = function() {
-        if (!groupsContainer) return;
-        if (tasks.length === 0) {
-          groupsContainer.innerHTML = `<div class="empty-message">✨ Nenhuma tarefa. Adicione uma acima.</div>`;
-          updateGroupDatalist();
-          return;
-        }
-        let html = currentView === 'groups' ? renderByGroups() : renderByDays();
-        groupsContainer.innerHTML = html;
-        updateGroupDatalist();
-        attachTaskEventListeners();
-      };
+      function renderTaskItem(task) {
+        const doneClass = task.done ? 'done-task' : '';
+        const checkedAttr = task.done ? 'checked' : '';
+        const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
+        return `
+          <div class="task-item ${doneClass}" data-task-id="${task.id}">
+            <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
+            <div class="task-content">
+              <span class="task-description">${escapeHtml(task.description)}</span>
+              <div class="task-meta">
+                <span class="task-group-badge">📂 ${escapeHtml(task.group)}</span>
+                <span class="completion-date">${completedDateDisplay}</span>
+              </div>
+            </div>
+            <div class="task-actions">
+              <button class="duplicate-btn small" data-id="${task.id}">🔁 Duplicar</button>
+              <button class="delete-btn small" data-id="${task.id}">🗑️</button>
+            </div>
+          </div>
+        `;
+      }
       
       function renderByGroups() {
         const groupsMap = new Map();
@@ -782,75 +787,48 @@
         return html || `<div class="empty-message">✨ Nenhuma tarefa registrada.</div>`;
       }
       
-      function renderTaskItem(task) {
-        const doneClass = task.done ? 'done-task' : '';
-        const checkedAttr = task.done ? 'checked' : '';
-        const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
-        return `
-          <div class="task-item ${doneClass}" data-task-id="${task.id}">
-            <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
-            <div class="task-content">
-              <span class="task-description">${escapeHtml(task.description)}</span>
-              <div class="task-meta">
-                <span class="task-group-badge">📂 ${escapeHtml(task.group)}</span>
-                <span class="completion-date">${completedDateDisplay}</span>
-              </div>
-            </div>
-            <div class="task-actions">
-              <button class="duplicate-btn small" data-id="${task.id}">🔁 Duplicar</button>
-              <button class="delete-btn small" data-id="${task.id}">🗑️</button>
-            </div>
-          </div>
-        `;
-      }
-      
-      function escapeHtml(text) {
-        if (!text) return text;
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-      }
-      
-      function attachTaskEventListeners() {
+      function renderTaskList() {
+        if (!groupsContainer) return;
+        if (tasks.length === 0) {
+          groupsContainer.innerHTML = `<div class="empty-message">✨ Nenhuma tarefa. Adicione uma acima.</div>`;
+          updateGroupDatalist();
+          return;
+        }
+        let html = currentView === 'groups' ? renderByGroups() : renderByDays();
+        groupsContainer.innerHTML = html;
+        updateGroupDatalist();
+        
+        // Attach event listeners
         document.querySelectorAll('.task-check').forEach(cb => {
-          cb.removeEventListener('change', handleCheckboxChange);
-          cb.addEventListener('change', handleCheckboxChange);
+          cb.addEventListener('change', (e) => {
+            const taskId = Number(e.target.dataset.id);
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            task.done = e.target.checked;
+            task.completedDate = task.done ? new Date().toLocaleString() : null;
+            saveData();
+            renderTaskList();
+          });
         });
         document.querySelectorAll('.duplicate-btn').forEach(btn => {
-          btn.removeEventListener('click', handleDuplicate);
-          btn.addEventListener('click', handleDuplicate);
+          btn.addEventListener('click', (e) => {
+            const taskId = Number(e.currentTarget.dataset.id);
+            const original = tasks.find(t => t.id === taskId);
+            if (!original) return;
+            const newTask = { ...original, id: Date.now() + Math.floor(Math.random() * 1000), done: false, completedDate: null };
+            tasks.push(newTask);
+            saveData();
+            renderTaskList();
+          });
         });
         document.querySelectorAll('.delete-btn').forEach(btn => {
-          btn.removeEventListener('click', handleDelete);
-          btn.addEventListener('click', handleDelete);
+          btn.addEventListener('click', (e) => {
+            const taskId = Number(e.currentTarget.dataset.id);
+            tasks = tasks.filter(t => t.id !== taskId);
+            saveData();
+            renderTaskList();
+          });
         });
-      }
-      
-      function handleCheckboxChange(e) {
-        const taskId = Number(e.target.dataset.id);
-        const task = tasks.find(t => t.id === taskId);
-        if (!task) return;
-        task.done = e.target.checked;
-        task.completedDate = task.done ? new Date().toLocaleString() : null;
-        saveData();
-        renderTaskList();
-      }
-      
-      function handleDuplicate(e) {
-        const taskId = Number(e.currentTarget.dataset.id);
-        const original = tasks.find(t => t.id === taskId);
-        if (!original) return;
-        const newTask = { ...original, id: Date.now() + Math.floor(Math.random() * 1000), done: false, completedDate: null };
-        tasks.push(newTask);
-        saveData();
-        renderTaskList();
-      }
-      
-      function handleDelete(e) {
-        const taskId = Number(e.currentTarget.dataset.id);
-        tasks = tasks.filter(t => t.id !== taskId);
-        saveData();
-        renderTaskList();
       }
       
       function addNewTask() {
@@ -916,13 +894,12 @@
       viewDaysBtn.addEventListener('click', () => setView('days'));
       exportBtn.addEventListener('click', exportData);
       importBtn.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', (e) => { if (fileInput.files.length) { importData(fileInput.files[0]); fileInput.value = ''; } });
+      fileInput.addEventListener('change', () => { if (fileInput.files.length) { importData(fileInput.files[0]); fileInput.value = ''; } });
       resetBtn.addEventListener('click', resetAllData);
       themeToggle.addEventListener('click', toggleTheme);
       if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
           await signOut(window.firebaseAuth);
-          // onAuthStateChanged vai automaticamente para tela de login
         });
       }
       
@@ -932,6 +909,9 @@
       // Inicializar lista
       renderTaskList();
       updateSyncStatus(!!currentUser, currentUser ? 'Conectado' : 'Modo offline');
+      
+      // Expor renderTaskList globalmente para callbacks do Firestore
+      window.renderTaskList = renderTaskList;
     }
     
     // Funções de tema
