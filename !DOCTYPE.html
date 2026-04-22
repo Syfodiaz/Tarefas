@@ -4,21 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bloco de Tarefas · Flag, Data, Diário & Nuvem</title>
-  <!-- Firebase SDK -->
+  
+  <!-- Firebase SDK (versão 12.12.1 compatível com seu snippet) -->
   <script type="module">
-    // Importar Firebase
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    // Importações necessárias
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
-    // ⚠️ SUBSTITUA PELAS SUAS CONFIGURAÇÕES DO FIREBASE
+    // SUAS CONFIGURAÇÕES DO FIREBASE
     const firebaseConfig = {
-      apiKey: "SUA_API_KEY",
-      authDomain: "SEU_AUTH_DOMAIN",
-      projectId: "SEU_PROJECT_ID",
-      storageBucket: "SEU_STORAGE_BUCKET",
-      messagingSenderId: "SEU_SENDER_ID",
-      appId: "SEU_APP_ID"
+      apiKey: "AIzaSyAG5eguIlQJjLpxxKqXAza6eTPGhdiXkI4",
+      authDomain: "tarefas-bb.firebaseapp.com",
+      projectId: "tarefas-bb",
+      storageBucket: "tarefas-bb.firebasestorage.app",
+      messagingSenderId: "294624314400",
+      appId: "1:294624314400:web:ae129240648326e3796845",
+      measurementId: "G-R6V9G1WGB4"
     };
 
     // Inicializar Firebase
@@ -26,7 +28,7 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Disponibilizar globalmente para o script principal
+    // Disponibilizar globalmente
     window.firebaseApp = app;
     window.firebaseAuth = auth;
     window.firebaseDb = db;
@@ -47,7 +49,6 @@
       background: #f4f7fc;
       color: #1e293b;
     }
-    /* Modo escuro */
     body.dark-mode {
       background: #0f172a;
       color: #e2e8f0;
@@ -415,13 +416,11 @@
   </h1>
   <div class="subtitle">⚑ Flag · Diário automático · ☁️ Sincronizado com Firebase</div>
 
-  <!-- Alternador de visualização -->
   <div class="view-toggle">
     <button id="viewGroupsBtn" class="active">📂 Agrupar por Grupo</button>
     <button id="viewDaysBtn">📅 Agrupar por Dia de Conclusão</button>
   </div>
 
-  <!-- Formulário para nova tarefa -->
   <div class="add-section">
     <div class="input-group">
       <label>📝 Descrição</label>
@@ -435,10 +434,8 @@
     <button id="addTaskBtn">➕ Adicionar</button>
   </div>
 
-  <!-- Container das tarefas -->
   <div id="groupsContainer"></div>
 
-  <!-- Rodapé com ações -->
   <div class="footer-bar">
     <div class="sync-status">
       <span id="syncIcon">☁️</span>
@@ -457,11 +454,9 @@
   (function(){
     "use strict";
 
-    // ---------- CONFIGURAÇÕES ----------
     const STORAGE_KEY = 'taskBlockApp_v3';
-    const USE_FIREBASE = true; // pode ser desativado se Firebase falhar
+    const USE_FIREBASE = true;
     
-    // ---------- ESTADO ----------
     let tasks = [];
     let currentView = 'groups';
     let darkMode = false;
@@ -469,10 +464,8 @@
     let currentUser = null;
     let isOnline = navigator.onLine;
     
-    // Referência ao documento do usuário no Firestore
     const TASKS_DOC_ID = 'user_tasks';
 
-    // ---------- ELEMENTOS DOM ----------
     const taskDescInput = document.getElementById('taskDescInput');
     const taskGroupInput = document.getElementById('taskGroupInput');
     const addBtn = document.getElementById('addTaskBtn');
@@ -488,7 +481,6 @@
     const syncIcon = document.getElementById('syncIcon');
     const syncText = document.getElementById('syncText');
 
-    // ---------- INICIALIZAÇÃO ----------
     function initTheme() {
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme === 'dark') {
@@ -500,7 +492,6 @@
         document.body.classList.remove('dark-mode');
         themeToggle.innerHTML = '🌙 Escuro';
       } else {
-        // Seguir preferência do sistema
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         darkMode = prefersDark;
         if (prefersDark) {
@@ -525,7 +516,6 @@
       }
     }
 
-    // ---------- SINCRONIZAÇÃO FIREBASE ----------
     async function initFirebase() {
       if (!USE_FIREBASE) return;
       
@@ -533,7 +523,6 @@
         const auth = window.firebaseAuth;
         const db = window.firebaseDb;
         
-        // Autenticação anônima
         await signInAnonymously(auth);
         
         onAuthStateChanged(auth, (user) => {
@@ -557,7 +546,6 @@
       const db = window.firebaseDb;
       const docRef = doc(db, 'tasks', uid);
       
-      // Listener em tempo real
       firestoreUnsubscribe = onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -573,19 +561,16 @@
             tasks = [];
           }
         } else {
-          // Documento não existe, criar com array vazio
           tasks = [];
           saveToFirestore();
         }
         
-        // Salvar cache local também
         saveToLocalStorage();
         renderTasks();
         updateSyncStatus(true, 'Sincronizado ☁️');
       }, (error) => {
         console.error('Erro no listener Firestore:', error);
         updateSyncStatus(false, 'Erro na sincronização');
-        // Fallback para localStorage
         loadFromLocalStorage();
       });
     }
@@ -601,7 +586,6 @@
       } catch (error) {
         console.error('Erro ao salvar no Firestore:', error);
         updateSyncStatus(false, 'Erro ao salvar');
-        // Fallback: salvar localmente
         saveToLocalStorage();
       }
     }
@@ -612,7 +596,6 @@
       syncText.textContent = message;
     }
 
-    // ---------- LOCAL STORAGE (fallback) ----------
     function loadFromLocalStorage() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -622,7 +605,6 @@
           tasks = [];
         }
       } else {
-        // Dados de exemplo
         tasks = [
           { id: Date.now() - 300000, description: 'Estudar documentação', group: 'Trabalho', done: false, completedDate: null },
           { id: Date.now() - 400000, description: 'Comprar mantimentos', group: 'Pessoal', done: true, completedDate: new Date().toLocaleString() },
@@ -637,15 +619,12 @@
     }
 
     function saveData() {
-      // Salvar sempre localmente
       saveToLocalStorage();
-      // Se Firebase ativo, salvar lá também
       if (USE_FIREBASE && currentUser) {
         saveToFirestore();
       }
     }
 
-    // ---------- RENDERIZAÇÃO ----------
     function updateGroupDatalist() {
       const groups = [...new Set(tasks.map(t => t.group).filter(g => g && g.trim() !== ''))];
       groupDatalist.innerHTML = '';
@@ -694,7 +673,7 @@
       let html = '';
       sortedGroups.forEach(groupName => {
         const groupTasks = groupsMap.get(groupName);
-        groupTasks.sort((a,b) => a.done - b.done); // pendentes primeiro
+        groupTasks.sort((a,b) => a.done - b.done);
 
         html += `<div class="group-header">📌 ${escapeHtml(groupName)} <span style="font-size:0.9rem; font-weight:normal;">(${groupTasks.length})</span></div>`;
         html += `<div class="task-list">`;
@@ -845,7 +824,6 @@
       renderTasks();
     }
 
-    // ---------- EXPORTAR / IMPORTAR ----------
     function exportData() {
       const dataStr = JSON.stringify(tasks, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });
@@ -898,7 +876,6 @@
       renderTasks();
     }
 
-    // ---------- EVENT LISTENERS ----------
     addBtn.addEventListener('click', addNewTask);
     taskDescInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
     taskGroupInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTask(); } });
@@ -918,22 +895,19 @@
     resetBtn.addEventListener('click', resetAllData);
     themeToggle.addEventListener('click', toggleTheme);
 
-    // Monitorar status online/offline
     window.addEventListener('online', () => {
       updateSyncStatus(true, 'Online ☁️');
       if (USE_FIREBASE && currentUser) {
-        saveToFirestore(); // tentar reenviar
+        saveToFirestore();
       }
     });
     window.addEventListener('offline', () => {
       updateSyncStatus(false, 'Offline');
     });
 
-    // ---------- BOOTSTRAP ----------
     initTheme();
     initFirebase();
     
-    // Fallback: se Firebase não carregar em 3 segundos, usar localStorage
     setTimeout(() => {
       if (!currentUser && USE_FIREBASE) {
         updateSyncStatus(false, 'Modo offline (local)');
