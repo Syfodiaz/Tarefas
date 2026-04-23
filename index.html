@@ -350,11 +350,30 @@
       align-items: flex-start;
       gap: 10px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+      transition: opacity 0.2s, border-color 0.2s;
+      cursor: grab;
+      user-select: none;
     }
 
     body.dark-mode .task-item {
       background: #1e293b;
       border-color: #334155;
+    }
+
+    .task-item.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+
+    .task-item.drag-over {
+      border-color: #3b82f6;
+      border-width: 2px;
+      background: #f0f7ff;
+    }
+
+    body.dark-mode .task-item.drag-over {
+      border-color: #60a5fa;
+      background: #1e3a5f;
     }
 
     .task-item.done-task {
@@ -381,6 +400,7 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      pointer-events: none; /* para não interferir no drag do item pai */
     }
 
     .task-description {
@@ -415,6 +435,7 @@
       margin-top: 4px;
       font-size: 0.75rem;
       color: #64748b;
+      pointer-events: none;
     }
 
     body.dark-mode .task-meta {
@@ -461,6 +482,7 @@
       box-shadow: none;
       border: 1px solid #e2e8f0;
       font-size: 0.85rem;
+      pointer-events: auto; /* botões precisam ser clicáveis */
     }
 
     body.dark-mode .task-actions button {
@@ -624,7 +646,6 @@
 <div id="appRoot"></div>
 
 <script type="module">
-  // ---------- IMPORTAÇÕES DO FIREBASE ----------
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
   import { 
     getAuth, 
@@ -656,7 +677,7 @@
   let currentView = 'groups';
   let darkMode = false;
   let firestoreUnsubscribe = null;
-  const STORAGE_KEY = 'taskBlockApp_v5';
+  const STORAGE_KEY = 'taskBlockApp_v6';
 
   // ---------- FUNÇÕES DE SINCRONIZAÇÃO ----------
   function saveToLocalStorage() {
@@ -700,10 +721,13 @@
             description: t.description || 'sem descrição',
             group: t.group || 'Geral',
             done: t.done || false,
-            completedDate: t.completedDate || null
+            completedDate: t.completedDate || null,
+            order: t.order ?? 0
           }));
         } else tasks = [];
       } else tasks = [];
+      // garantir que todas as tarefas tenham order
+      tasks.forEach((t, idx) => { if (t.order === undefined) t.order = idx; });
       saveToLocalStorage();
       if (typeof renderTaskList === 'function') renderTaskList();
       updateSyncStatus(true, 'Conectado');
@@ -811,7 +835,7 @@
             <button id="themeToggle" class="small" title="Alternar tema">🌙 Escuro</button>
           </div>
         </h1>
-        <div class="subtitle">⚑ Flag · Diário automático</div>
+        <div class="subtitle">⚑ Flag · Diário automático · ✋ Arraste para reordenar</div>
         
         <div class="view-toggle">
           <button id="viewGroupsBtn" class="active">📂 Agrupar por Grupo</button>
@@ -865,6 +889,10 @@
     const logoutBtn = document.getElementById('logoutBtn');
     const editProfileBtn = document.getElementById('editProfileBtn');
     
+    // Drag and Drop state
+    let dragSourceElement = null;
+    let dragSourceTaskId = null;
+    
     function escapeHtml(text) {
       if (!text) return text;
       const div = document.createElement('div');
@@ -888,7 +916,7 @@
       const checkedAttr = task.done ? 'checked' : '';
       const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
       return `
-        <div class="task-item ${doneClass}" data-task-id="${task.id}">
+        <div class="task-item ${doneClass}" data-task-id="${task.id}" draggable="true">
           <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
           <div class="task-content">
             <span class="task-description">${escapeHtml(task.description)}</span>
@@ -905,9 +933,18 @@
       `;
     }
     
+    function getSortedTasksForRendering() {
+      // Ordenação: pendentes primeiro, depois concluídas; dentro de cada grupo, por order
+      return [...tasks].sort((a, b) => {
+        if (a.done !== b.done) return a.done ? 1 : -1;
+        return (a.order ?? 0) - (b.order ?? 0);
+      });
+    }
+    
     function renderByGroups() {
+      const sortedTasks = getSortedTasksForRendering();
       const groupsMap = new Map();
-      tasks.forEach(task => {
+      sortedTasks.forEach(task => {
         const group = task.group?.trim() || 'Geral';
         if (!groupsMap.has(group)) groupsMap.set(group, []);
         groupsMap.get(group).push(task);
@@ -916,7 +953,6 @@
       let html = '';
       sortedGroups.forEach(groupName => {
         const groupTasks = groupsMap.get(groupName);
-        groupTasks.sort((a,b) => a.done - b.done);
         html += `<div class="group-header">📌 ${escapeHtml(groupName)} <span style="font-size:0.9rem; font-weight:normal;">(${groupTasks.length})</span></div>`;
         html += `<div class="task-list">`;
         groupTasks.forEach(task => html += renderTaskItem(task));
@@ -926,8 +962,9 @@
     }
     
     function renderByDays() {
-      const pending = tasks.filter(t => !t.done);
-      const doneTasks = tasks.filter(t => t.done && t.completedDate);
+      const sortedTasks = getSortedTasksForRendering();
+      const pending = sortedTasks.filter(t => !t.done);
+      const doneTasks = sortedTasks.filter(t => t.done && t.completedDate);
       const daysMap = new Map();
       doneTasks.forEach(task => {
         const datePart = task.completedDate.split(',')[0]?.trim() || 'Data desconhecida';
@@ -942,19 +979,112 @@
       if (pending.length > 0) {
         html += `<div class="group-header">⏳ Pendentes <span style="font-size:0.9rem; font-weight:normal;">(${pending.length})</span></div>`;
         html += `<div class="task-list">`;
-        pending.sort((a,b) => a.description.localeCompare(b.description));
         pending.forEach(task => html += renderTaskItem(task));
         html += `</div>`;
       }
       sortedDays.forEach(day => {
         const dayTasks = daysMap.get(day);
-        dayTasks.sort((a,b) => a.group.localeCompare(b.group) || a.description.localeCompare(b.description));
         html += `<div class="group-header">📅 ${escapeHtml(day)} <span style="font-size:0.9rem; font-weight:normal;">(${dayTasks.length})</span></div>`;
         html += `<div class="task-list">`;
         dayTasks.forEach(task => html += renderTaskItem(task));
         html += `</div>`;
       });
       return html || `<div class="empty-message">✨ Nenhuma tarefa registrada.</div>`;
+    }
+    
+    function attachDragDropListeners() {
+      const items = document.querySelectorAll('.task-item[draggable="true"]');
+      
+      items.forEach(item => {
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+        item.addEventListener('dragover', handleDragOver);
+        item.addEventListener('dragenter', handleDragEnter);
+        item.addEventListener('dragleave', handleDragLeave);
+        item.addEventListener('drop', handleDrop);
+      });
+    }
+    
+    function handleDragStart(e) {
+      const taskElement = e.target.closest('.task-item');
+      if (!taskElement) return;
+      dragSourceElement = taskElement;
+      dragSourceTaskId = Number(taskElement.dataset.taskId);
+      taskElement.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragSourceTaskId);
+    }
+    
+    function handleDragEnd(e) {
+      const taskElement = e.target.closest('.task-item');
+      if (taskElement) taskElement.classList.remove('dragging');
+      document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
+      dragSourceElement = null;
+      dragSourceTaskId = null;
+    }
+    
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+    
+    function handleDragEnter(e) {
+      e.preventDefault();
+      const taskElement = e.target.closest('.task-item');
+      if (taskElement && taskElement !== dragSourceElement) {
+        taskElement.classList.add('drag-over');
+      }
+    }
+    
+    function handleDragLeave(e) {
+      const taskElement = e.target.closest('.task-item');
+      if (taskElement) taskElement.classList.remove('drag-over');
+    }
+    
+    function handleDrop(e) {
+      e.preventDefault();
+      const targetElement = e.target.closest('.task-item');
+      if (!targetElement || !dragSourceElement || targetElement === dragSourceElement) {
+        document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
+        return;
+      }
+      
+      const targetTaskId = Number(targetElement.dataset.taskId);
+      const sourceTask = tasks.find(t => t.id === dragSourceTaskId);
+      const targetTask = tasks.find(t => t.id === targetTaskId);
+      
+      if (!sourceTask || !targetTask) return;
+      
+      // Só reordenar tarefas com o mesmo status (done)
+      if (sourceTask.done !== targetTask.done) {
+        alert('Só é possível reordenar tarefas do mesmo status (pendentes com pendentes, concluídas com concluídas).');
+        document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
+        return;
+      }
+      
+      // Filtrar tarefas do mesmo status para reordenar
+      const sameStatusTasks = tasks.filter(t => t.done === sourceTask.done);
+      const sourceIndex = sameStatusTasks.findIndex(t => t.id === sourceTask.id);
+      const targetIndex = sameStatusTasks.findIndex(t => t.id === targetTask.id);
+      
+      if (sourceIndex === -1 || targetIndex === -1) return;
+      
+      // Reordenar array local e atualizar orders
+      sameStatusTasks.splice(sourceIndex, 1);
+      sameStatusTasks.splice(targetIndex, 0, sourceTask);
+      
+      // Atualizar orders de todas as tarefas do mesmo status
+      sameStatusTasks.forEach((t, idx) => { t.order = idx; });
+      
+      // Atualizar orders das tarefas do outro status também (para manter consistência)
+      const otherStatusTasks = tasks.filter(t => t.done !== sourceTask.done);
+      otherStatusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+      otherStatusTasks.forEach((t, idx) => { t.order = idx; });
+      
+      saveData();
+      renderTaskList();
+      
+      document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
     }
     
     function renderTaskList() {
@@ -968,6 +1098,7 @@
       groupsContainer.innerHTML = html;
       updateGroupDatalist();
       
+      // Event listeners para checkboxes e botões
       document.querySelectorAll('.task-check').forEach(cb => {
         cb.addEventListener('change', (e) => {
           const taskId = Number(e.target.dataset.id);
@@ -975,6 +1106,14 @@
           if (!task) return;
           task.done = e.target.checked;
           task.completedDate = task.done ? new Date().toLocaleString() : null;
+          // Ao marcar como concluída, mover para o final da lista de concluídas (ajustar order)
+          if (task.done) {
+            const maxOrderDone = Math.max(...tasks.filter(t => t.done).map(t => t.order ?? 0), -1);
+            task.order = maxOrderDone + 1;
+          } else {
+            const maxOrderPending = Math.max(...tasks.filter(t => !t.done).map(t => t.order ?? 0), -1);
+            task.order = maxOrderPending + 1;
+          }
           saveData();
           renderTaskList();
         });
@@ -984,7 +1123,14 @@
           const taskId = Number(e.currentTarget.dataset.id);
           const original = tasks.find(t => t.id === taskId);
           if (!original) return;
-          const newTask = { ...original, id: Date.now() + Math.floor(Math.random() * 1000), done: false, completedDate: null };
+          const newOrder = Math.max(...tasks.filter(t => t.done === original.done).map(t => t.order ?? 0), -1) + 1;
+          const newTask = { 
+            ...original, 
+            id: Date.now() + Math.floor(Math.random() * 1000), 
+            done: false, 
+            completedDate: null,
+            order: newOrder
+          };
           tasks.push(newTask);
           saveData();
           renderTaskList();
@@ -994,17 +1140,34 @@
         btn.addEventListener('click', (e) => {
           const taskId = Number(e.currentTarget.dataset.id);
           tasks = tasks.filter(t => t.id !== taskId);
+          // Recalcular orders para manter consistência
+          ['pending', 'done'].forEach(status => {
+            const statusTasks = tasks.filter(t => t.done === (status === 'done'));
+            statusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+            statusTasks.forEach((t, idx) => { t.order = idx; });
+          });
           saveData();
           renderTaskList();
         });
       });
+      
+      attachDragDropListeners();
     }
     
     function addNewTask() {
       const description = taskDescInput.value.trim();
       if (!description) { alert('Descreva a tarefa.'); return; }
       let group = taskGroupInput.value.trim() || 'Geral';
-      const newTask = { id: Date.now() + Math.floor(Math.random() * 1000), description, group, done: false, completedDate: null };
+      // Determinar a maior order entre pendentes
+      const maxOrder = Math.max(...tasks.filter(t => !t.done).map(t => t.order ?? 0), -1);
+      const newTask = { 
+        id: Date.now() + Math.floor(Math.random() * 1000), 
+        description, 
+        group, 
+        done: false, 
+        completedDate: null,
+        order: maxOrder + 1
+      };
       tasks.push(newTask);
       saveData();
       taskDescInput.value = '';
@@ -1037,7 +1200,20 @@
         try {
           const imported = JSON.parse(e.target.result);
           if (Array.isArray(imported)) {
-            tasks = imported.map(t => ({ id: t.id || Date.now(), description: t.description || '', group: t.group || 'Geral', done: t.done || false, completedDate: t.completedDate || null }));
+            tasks = imported.map(t => ({ 
+              id: t.id || Date.now(), 
+              description: t.description || '', 
+              group: t.group || 'Geral', 
+              done: t.done || false, 
+              completedDate: t.completedDate || null,
+              order: t.order ?? 0
+            }));
+            // garantir orders consistentes
+            ['pending', 'done'].forEach(status => {
+              const statusTasks = tasks.filter(t => t.done === (status === 'done'));
+              statusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+              statusTasks.forEach((t, idx) => { t.order = idx; });
+            });
             saveData();
             renderTaskList();
             alert('Importação concluída!');
