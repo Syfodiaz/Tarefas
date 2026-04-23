@@ -351,7 +351,6 @@
       gap: 10px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.02);
       transition: opacity 0.2s, border-color 0.2s;
-      cursor: grab;
       user-select: none;
     }
 
@@ -362,7 +361,6 @@
 
     .task-item.dragging {
       opacity: 0.5;
-      cursor: grabbing;
     }
 
     .task-item.drag-over {
@@ -386,6 +384,39 @@
       border-color: #1e293b;
     }
 
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      color: #94a3b8;
+      font-size: 1.2rem;
+      cursor: grab;
+      flex-shrink: 0;
+      margin-top: 2px;
+      user-select: none;
+      border-radius: 4px;
+    }
+
+    .drag-handle:hover {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    body.dark-mode .drag-handle {
+      color: #64748b;
+    }
+
+    body.dark-mode .drag-handle:hover {
+      background: #334155;
+      color: #cbd5e1;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
     .task-check {
       transform: scale(1.2);
       accent-color: #3b82f6;
@@ -400,7 +431,7 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      pointer-events: none; /* para não interferir no drag do item pai */
+      pointer-events: none;
     }
 
     .task-description {
@@ -482,7 +513,7 @@
       box-shadow: none;
       border: 1px solid #e2e8f0;
       font-size: 0.85rem;
-      pointer-events: auto; /* botões precisam ser clicáveis */
+      pointer-events: auto;
     }
 
     body.dark-mode .task-actions button {
@@ -677,7 +708,7 @@
   let currentView = 'groups';
   let darkMode = false;
   let firestoreUnsubscribe = null;
-  const STORAGE_KEY = 'taskBlockApp_v6';
+  const STORAGE_KEY = 'taskBlockApp_v7';
 
   // ---------- FUNÇÕES DE SINCRONIZAÇÃO ----------
   function saveToLocalStorage() {
@@ -835,7 +866,7 @@
             <button id="themeToggle" class="small" title="Alternar tema">🌙 Escuro</button>
           </div>
         </h1>
-        <div class="subtitle">⚑ Flag · Diário automático · ✋ Arraste para reordenar</div>
+        <div class="subtitle">⚑ Flag · Diário automático · ✋ Arraste pelas 3 barrinhas para reordenar</div>
         
         <div class="view-toggle">
           <button id="viewGroupsBtn" class="active">📂 Agrupar por Grupo</button>
@@ -917,6 +948,7 @@
       const completedDateDisplay = task.completedDate ? `✅ ${escapeHtml(task.completedDate)}` : '⏳ Pendente';
       return `
         <div class="task-item ${doneClass}" data-task-id="${task.id}" draggable="true">
+          <span class="drag-handle" title="Arraste para reordenar">☰</span>
           <input type="checkbox" class="task-check" ${checkedAttr} data-id="${task.id}">
           <div class="task-content">
             <span class="task-description">${escapeHtml(task.description)}</span>
@@ -1006,8 +1038,17 @@
     }
     
     function handleDragStart(e) {
+      // Permitir arrastar apenas se iniciou no handle ou no item inteiro (mas o handle é o ideal)
       const taskElement = e.target.closest('.task-item');
       if (!taskElement) return;
+      
+      // Verificar se o drag começou no handle (opcional, mas pode ajudar)
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) {
+        // Se não começou no handle, pode cancelar, mas preferimos permitir também.
+        // Apenas continue.
+      }
+      
       dragSourceElement = taskElement;
       dragSourceTaskId = Number(taskElement.dataset.taskId);
       taskElement.classList.add('dragging');
@@ -1055,28 +1096,23 @@
       
       if (!sourceTask || !targetTask) return;
       
-      // Só reordenar tarefas com o mesmo status (done)
       if (sourceTask.done !== targetTask.done) {
         alert('Só é possível reordenar tarefas do mesmo status (pendentes com pendentes, concluídas com concluídas).');
         document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
         return;
       }
       
-      // Filtrar tarefas do mesmo status para reordenar
       const sameStatusTasks = tasks.filter(t => t.done === sourceTask.done);
       const sourceIndex = sameStatusTasks.findIndex(t => t.id === sourceTask.id);
       const targetIndex = sameStatusTasks.findIndex(t => t.id === targetTask.id);
       
       if (sourceIndex === -1 || targetIndex === -1) return;
       
-      // Reordenar array local e atualizar orders
       sameStatusTasks.splice(sourceIndex, 1);
       sameStatusTasks.splice(targetIndex, 0, sourceTask);
       
-      // Atualizar orders de todas as tarefas do mesmo status
       sameStatusTasks.forEach((t, idx) => { t.order = idx; });
       
-      // Atualizar orders das tarefas do outro status também (para manter consistência)
       const otherStatusTasks = tasks.filter(t => t.done !== sourceTask.done);
       otherStatusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
       otherStatusTasks.forEach((t, idx) => { t.order = idx; });
@@ -1098,7 +1134,6 @@
       groupsContainer.innerHTML = html;
       updateGroupDatalist();
       
-      // Event listeners para checkboxes e botões
       document.querySelectorAll('.task-check').forEach(cb => {
         cb.addEventListener('change', (e) => {
           const taskId = Number(e.target.dataset.id);
@@ -1106,7 +1141,6 @@
           if (!task) return;
           task.done = e.target.checked;
           task.completedDate = task.done ? new Date().toLocaleString() : null;
-          // Ao marcar como concluída, mover para o final da lista de concluídas (ajustar order)
           if (task.done) {
             const maxOrderDone = Math.max(...tasks.filter(t => t.done).map(t => t.order ?? 0), -1);
             task.order = maxOrderDone + 1;
@@ -1140,7 +1174,6 @@
         btn.addEventListener('click', (e) => {
           const taskId = Number(e.currentTarget.dataset.id);
           tasks = tasks.filter(t => t.id !== taskId);
-          // Recalcular orders para manter consistência
           ['pending', 'done'].forEach(status => {
             const statusTasks = tasks.filter(t => t.done === (status === 'done'));
             statusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
@@ -1158,7 +1191,6 @@
       const description = taskDescInput.value.trim();
       if (!description) { alert('Descreva a tarefa.'); return; }
       let group = taskGroupInput.value.trim() || 'Geral';
-      // Determinar a maior order entre pendentes
       const maxOrder = Math.max(...tasks.filter(t => !t.done).map(t => t.order ?? 0), -1);
       const newTask = { 
         id: Date.now() + Math.floor(Math.random() * 1000), 
@@ -1208,7 +1240,6 @@
               completedDate: t.completedDate || null,
               order: t.order ?? 0
             }));
-            // garantir orders consistentes
             ['pending', 'done'].forEach(status => {
               const statusTasks = tasks.filter(t => t.done === (status === 'done'));
               statusTasks.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
